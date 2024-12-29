@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vista de Alumno - Asistencias</title>
+    <link rel="stylesheet" href="assets/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+</head>
+<body>
+    <div class="container">
+        <div id="mainContent">
+            <header>
+                <div class="alumno-header">
+                    <h1>Asistencias</h1>
+                    <div class="alumno-info">
+                        <h2 id="nombreAlumno"></h2>
+                        <p id="seccionAlumno"></p>
+                        <div class="ultima-asistencia">
+                            <span>Última asistencia:</span>
+                            <span id="ultimaAsistencia" class="estado-badge">-</span>
+                        </div>
+                    </div>
+                </div>
+                <nav class="main-nav">
+                    <button onclick="cerrarSesion()" class="btn-logout">Cerrar Sesión</button>
+                </nav>
+            </header>
+
+            <div class="resumen-asistencia">
+                <div class="stats-container">
+                    <div class="stat-item">
+                        <span class="stat-label">Asistencias</span>
+                        <span class="stat-value" id="totalAsistencias">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Tardanzas</span>
+                        <span class="stat-value" id="totalTardanzas">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Faltas Justificadas</span>
+                        <span class="stat-value" id="totalJustificadas">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Faltas Injustificadas</span>
+                        <span class="stat-value" id="totalInjustificadas">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tableContainer"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/tableGenerator.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script>
+        // Función simple para cerrar sesión
+        function cerrarSesion() {
+            localStorage.clear(); // o específicamente: localStorage.removeItem('token'); localStorage.removeItem('user');
+            window.location.href = 'index.html';
+        }
+
+        // Verificar autenticación al cargar
+        if (!localStorage.getItem('token') || !localStorage.getItem('user')) {
+            window.location.href = 'index.html';
+        }
+
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (user.tipo !== 'alumno') {
+            window.location.href = 'index.html';
+        }
+
+        // Función para hacer peticiones autenticadas
+        async function fetchAuth(url, options = {}) {
+            const token = localStorage.getItem('token');
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            const response = await fetch(url, { ...options, headers });
+            if (response.status === 401) {
+                cerrarSesion();
+                throw new Error('Session expired');
+            }
+            return response;
+        }
+
+        async function cargarDatosAlumno() {
+            try {
+                // Obtener datos del usuario actual primero
+                const user = JSON.parse(localStorage.getItem('user'));
+                const response = await fetchAuth('http://localhost:3000/api/users');
+                if (!response.ok) {
+                    console.warn('Aviso: Cargando datos básicos del usuario');
+                    document.getElementById('nombreAlumno').textContent = user.username;
+                    document.getElementById('seccionAlumno').textContent = 'Tu registro de asistencia...';
+                    return;
+                }
+                
+                const userData = await response.json();
+                const alumnoData = userData.users.find(u => u.username === user.username);
+
+                if (!alumnoData) {
+                    console.warn('Aviso: Usuario no encontrado en la base de datos');
+                    document.getElementById('nombreAlumno').textContent = user.username;
+                    document.getElementById('seccionAlumno').textContent = 'Usuario nuevo';
+                    return;
+                }
+
+                // Establecer nombre del alumno desde los datos del usuario
+                document.getElementById('nombreAlumno').textContent = alumnoData.alumno_nombre || user.username;
+                document.getElementById('seccionAlumno').textContent = `Sección: ${alumnoData.seccion || 'No asignada'}`;
+                window.nombreCompletoAlumno = alumnoData.alumno_nombre;
+
+                // Intentar obtener datos adicionales de asistencias
+                try {
+                    const registrosResponse = await fetchAuth('http://localhost:3000/api/registros');
+                    if (!registrosResponse.ok) {
+                        console.warn('Aviso: No se pudieron cargar los registros');
+                        return;
+                    }
+                    
+                    const registrosData = await registrosResponse.json();
+                    if (!registrosData.registros || registrosData.registros.length === 0) {
+                        console.warn('Aviso: No hay registros disponibles');
+                        return;
+                    }
+
+                    // Obtener el primer registro y sus asistencias
+                    const registro = registrosData.registros[0];
+                    const asistenciasResponse = await fetchAuth(
+                        `http://localhost:3000/api/registros/${registro.id}/asistencias/1`
+                    );
+
+                    if (!asistenciasResponse.ok) {
+                        console.warn('Aviso: No se pudieron cargar las asistencias');
+                        return;
+                    }
+                    
+                    const asistenciasData = await asistenciasResponse.json();
+                    
+                    // Buscar el alumno en las asistencias
+                    const alumnoAsistencias = asistenciasData.alumnos.find(
+                        a => a.nombre.includes(alumnoData.alumno_nombre)
+                    );
+
+                    if (alumnoAsistencias) {
+                        // Actualizar con el nombre completo de las asistencias
+                        document.getElementById('nombreAlumno').textContent = alumnoAsistencias.nombre;
+                        window.nombreCompletoAlumno = alumnoAsistencias.nombre;
+                        showNotification('Datos cargados correctamente', true);
+                    }
+                } catch (error) {
+                    console.warn('Aviso: Error al cargar datos adicionales', error);
+                    // No mostrar error al usuario ya que tenemos los datos básicos
+                }
+            } catch (error) {
+                console.warn('Aviso: Usando datos básicos del usuario', error);
+                const user = JSON.parse(localStorage.getItem('user'));
+                document.getElementById('nombreAlumno').textContent = user.username;
+                document.getElementById('seccionAlumno').textContent = 'Cargando datos...';
+            }
+        }
+
+        function actualizarEstadisticas(asistenciasPorPeriodo) {
+            let totales = {
+                a: 0, // Asistencias
+                t: 0, // Tardanzas
+                j: 0, // Justificadas
+                i: 0  // Injustificadas
+            };
+
+            let ultimaAsistencia = null;
+            let fechaUltima = null;
+
+            // Primero, recolectar todas las asistencias válidas
+            const asistenciasValidas = [];
+            asistenciasPorPeriodo.forEach(periodo => {
+                Object.values(periodo.asistenciasPorAlumno).forEach(alumno => {
+                    alumno.dias.forEach(dia => {
+                        const estado = dia.estado.toLowerCase();
+                        // Contar todas las asistencias para estadísticas
+                        totales[estado]++;
+                        
+                        // Solo guardar asistencias válidas (no guiones)
+                        if (['a', 't', 'j', 'i'].includes(estado)) {
+                            asistenciasValidas.push({
+                                fecha: new Date(dia.fecha || '2024-01-01'),
+                                estado: dia.estado,
+                                semana: dia.semana,
+                                diaEnSemana: dia.diaEnSemana
+                            });
+                        }
+                    });
+                });
+            });
+
+            // Ordenar asistencias válidas por fecha y semana
+            asistenciasValidas.sort((a, b) => {
+                if (a.semana !== b.semana) {
+                    return b.semana - a.semana; // Ordenar por semana descendente
+                }
+                return b.diaEnSemana - a.diaEnSemana; // Si es la misma semana, ordenar por día
+            });
+
+            // Actualizar contadores
+            document.getElementById('totalAsistencias').textContent = totales.a;
+            document.getElementById('totalTardanzas').textContent = totales.t;
+            document.getElementById('totalJustificadas').textContent = totales.j;
+            document.getElementById('totalInjustificadas').textContent = totales.i;
+
+            // Actualizar última asistencia
+            const ultimaAsistenciaEl = document.getElementById('ultimaAsistencia');
+            if (asistenciasValidas.length > 0) {
+                const ultima = asistenciasValidas[0]; // Tomar la primera después de ordenar
+                ultimaAsistenciaEl.textContent = getEstadoTexto(ultima.estado);
+                ultimaAsistenciaEl.className = `estado-badge estado-${ultima.estado.toLowerCase()}`;
+            } else {
+                ultimaAsistenciaEl.textContent = 'Sin registros';
+                ultimaAsistenciaEl.className = 'estado-badge';
+            }
+        }
+
+        // Función auxiliar para obtener el texto del estado
+        function getEstadoTexto(estado) {
+            const estados = {
+                'A': 'Asistió',
+                'T': 'Tardanza',
+                'J': 'Justificado',
+                'I': 'Inasistencia'
+            };
+            return estados[estado.toUpperCase()] || estado;
+        }
+
+        // Modificar la función cargarAsistencias para incluir estadísticas
+        async function cargarAsistencias() {
+            try {
+                const response = await fetchAuth('http://localhost:3000/api/registros');
+                if (!response.ok) throw new Error('Error al cargar registros');
+                
+                const data = await response.json();
+                if (data.registros && data.registros.length > 0) {
+                    const asistenciasPorPeriodo = [];
+                    
+                    for (const registro of data.registros) {
+                        for (let bimestre = 1; bimestre <= 3; bimestre++) {
+                            try {
+                                const asistenciasResponse = await fetchAuth(
+                                    `http://localhost:3000/api/registros/${registro.id}/asistencias/${bimestre}`
+                                );
+                                
+                                if (asistenciasResponse.ok) {
+                                    const asistenciasData = await asistenciasResponse.json();
+                                    if (asistenciasData.alumnos && asistenciasData.alumnos.length > 0) {
+                                        // Usar directamente los datos del primer alumno
+                                        const alumnoAsistencias = asistenciasData.alumnos[0];
+                                        asistenciasPorPeriodo.push({
+                                            numero: bimestre,
+                                            asistenciasPorAlumno: {
+                                                [alumnoAsistencias.nombre]: alumnoAsistencias
+                                            }
+                                        });
+                                    }
+                                }
+                            } catch (error) {
+                                console.error(`Error cargando bimestre ${bimestre}:`, error);
+                            }
+                        }
+                    }
+
+                    if (asistenciasPorPeriodo.length > 0) {
+                        const tableGenerator = new TableGenerator(document.getElementById('tableContainer'));
+                        tableGenerator.showResults({
+                            asistenciasPorPeriodo: asistenciasPorPeriodo,
+                            nombreAlumno: window.nombreCompletoAlumno
+                        });
+                        actualizarEstadisticas(asistenciasPorPeriodo);
+                    } else {
+                        document.getElementById('tableContainer').innerHTML = 
+                            '<p class="no-registros-msg">No hay registros de asistencia disponibles</p>';
+                    }
+                } else {
+                    document.getElementById('tableContainer').innerHTML = 
+                        '<p class="no-registros-msg">No hay registros de asistencia disponibles</p>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showNotification('Error al cargar las asistencias', false);
+            }
+        }
+
+        // Iniciar carga de datos
+        cargarDatosAlumno();
+        cargarAsistencias();
+    </script>
+</body>
+</html> 

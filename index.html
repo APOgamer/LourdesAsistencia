@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asistencia Lourdes</title>
+    <link rel="stylesheet" href="assets/css/styles.css">
+    <!-- SheetJS para procesar Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Sección de login (visible por defecto) -->
+        <section id="loginSection" class="section active">
+            <div class="login-container">
+                <h2>Iniciar Sesión</h2>
+                <form id="loginForm">
+                    <div class="input-group">
+                        <label for="username">Usuario:</label>
+                        <input type="text" id="username" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="password">Contraseña:</label>
+                        <input type="password" id="password" required>
+                    </div>
+                    <button type="submit" class="btn-login">Iniciar Sesión</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Contenido principal (oculto hasta login) -->
+        <div id="mainContent" style="display: none;">
+            <header>
+                <h1>Sistema de Procesamiento de Asistencia LOURDES</h1>
+                <nav class="main-nav">
+                    <button class="nav-button admin-colab" data-section="upload">Subir Archivo</button>
+                    <button class="nav-button" data-section="records">Ver Registros</button>
+                    <button class="nav-button admin-only" data-section="users">Gestionar Usuarios</button>
+                    <button id="logoutBtn" class="btn-logout">Cerrar Sesión</button>
+                </nav>
+            </header>
+            
+            <!-- Sección de subida de archivo -->
+            <section id="uploadSection" class="section">
+                <div class="upload-section">
+                    <label for="excelFile" class="upload-label">
+                        Seleccionar archivo Excel
+                        <input type="file" id="excelFile" accept=".xlsx, .xls" />
+                    </label>
+                </div>
+
+                <div class="info-section">
+                    <div id="seccionInfo"></div>
+                    <div id="semanaInfo"></div>
+                    <div class="registro-info">
+                        <div class="input-group">
+                            <label for="anioRegistro">Año del Registro:</label>
+                            <select id="anioRegistro">
+                                <option value="">Seleccione año</option>
+                                <!-- Se llenará dinámicamente -->
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="fechaInicio">Fecha de Inicio:</label>
+                            <input type="date" id="fechaInicio" required>
+                        </div>
+                    </div>                   
+                    <button id="guardarSistema" class="save-button" disabled>
+                        Guardar en el Sistema
+                    </button>
+                </div>
+
+                <div class="results-section">
+                    <div id="tableContainer"></div>
+                </div>
+            </section>
+
+            <!-- Nueva sección para ver registros -->
+            <section id="recordsSection" class="section">
+               
+                <div id="recordsContainer"></div>
+            </section>
+
+            <!-- Dentro de mainContent, después de la sección de registros -->
+            <section id="usersSection" class="section">
+                <div class="users-container">
+                    <div class="users-header">
+                        <h2>Gestión de Usuarios</h2>
+                        <div class="header-actions">
+                            <button id="createUserBtn" class="btn-create-user">
+                                <i class="fas fa-user-plus"></i>
+                                Crear Nuevo Usuario
+                            </button>
+                            <button id="generateMissingBtn" class="btn-generate-missing admin-only">
+                                <i class="fas fa-users-cog"></i>
+                                Generar Alumnos Faltantes
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="users-filters">
+                        <select id="userTypeFilter">
+                            <option value="">Todos los tipos</option>
+                            <option value="colaborador">Colaboradores</option>
+                            <option value="alumno">Alumnos</option>
+                        </select>
+                        <input type="text" id="searchUser" placeholder="Buscar usuario...">
+                    </div>
+
+                    <div class="users-list">
+                        <table id="usersTable">
+                            <thead>
+                                <tr>
+                                    <th>Usuario</th>
+                                    <th>Tipo</th>
+                                    <th>Fecha Creación</th>
+                                    <th>Alumno Asociado</th>
+                                    <th>Sección</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Modal para crear usuario -->
+                <div id="createUserModal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h2>Crear Nuevo Usuario</h2>
+                        <form id="createUserForm" novalidate>
+                            <div class="form-group">
+                                <label for="newUsername">Usuario:*</label>
+                                <input type="text" id="newUsername" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="newUserType">Tipo:*</label>
+                                <select id="newUserType" required>
+                                    <option value="">Seleccione tipo</option>
+                                    <option value="colaborador" class="admin-only">Colaborador</option>
+                                    <option value="alumno">Alumno</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="newPassword">Contraseña:*</label>
+                                <div class="password-group">
+                                    <input type="password" id="newPassword" required>
+                                    <button type="button" id="generatePassword">Generar</button>
+                                </div>
+                            </div>
+                            <div class="form-group alumno-fields" style="display: none;">
+                                <label for="seccionAlumno">Sección:*</label>
+                                <select id="seccionAlumno">
+                                    <option value="">Seleccione sección</option>
+                                </select>
+                            </div>
+                            <div class="form-group alumno-fields" style="display: none;">
+                                <label for="alumnoNombre">Nombre del Alumno:*</label>
+                                <select id="alumnoNombre">
+                                    <option value="">Seleccione alumno</option>
+                                </select>
+                            </div>
+                            <button type="submit">Crear Usuario</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Agregar este modal después del modal de crear usuario -->
+                <div id="generateUsersModal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h2>Generar Usuarios Faltantes</h2>
+                        <form id="generateUsersForm" novalidate>
+                            <div class="form-group">
+                                <label for="seccionGenerar">Sección:*</label>
+                                <select id="seccionGenerar" required>
+                                    <option value="">Todas las secciones</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn-primary">Generar Usuarios</button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="assets/js/utils.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/excelReader.js"></script>
+    <script src="assets/js/tableGenerator.js"></script>
+    <script src="assets/js/recordViewer.js"></script>
+    <script src="assets/js/main.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</body>
+</html> 
